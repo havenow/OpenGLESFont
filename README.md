@@ -42,3 +42,5 @@ public:
 
 :10  表示占10位
 ```
+- # FreeType  
+freetype字体库是将文字渲染到矢量或者图片  
