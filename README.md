@@ -44,15 +44,12 @@ public:
 ```
 - # FreeType  
 
-[FreeType2中文手册](https://www.cnblogs.com/htc-javaMe/archive/2010/12/12/2562529.html)  
+[FreeType2中文手册](https://www.cnblogs.com/htc-javaMe/archive/2010/12/12/2562529.html)      
+
+包括下面的内容：    
+[FreeType Glyph Conventions](https://www.freetype.org/freetype2/docs/glyphs/index.html)   
+[FreeType Design](https://www.freetype.org/freetype2/docs/design/index.html)    
+[FreeType Tutorial](https://www.freetype.org/freetype2/docs/tutorial/index.html)    
 
 freetype字体库是将文字渲染到矢量或者图片  
 
-重要的字体度量参数：    
- 上下高度(ascent)：   从基线到放置轮廓点最高(上)的距离；     
- 下行高度(descent)：从基线到放置轮廓点最低(下)的距离；       
- 左跨距(bearingX)：  从当前笔位置到轮廓左边界的水平位置；     
- 上跨距(bearingY)：  从当前笔位置到轮廓上边界的垂直位置；     
- 步进宽度(advanceX): 相邻两个笔位置的水平距离(字间距)；     
- 字形宽度(width)：     字形的水平长度；      
- 字形高度(height)：   字形的垂直长度。       
