@@ -43,6 +43,9 @@ public:
 :10  表示占10位
 ```
 - # FreeType  
+
+[FreeType2中文手册](https://www.cnblogs.com/htc-javaMe/archive/2010/12/12/2562529.html)  
+
 freetype字体库是将文字渲染到矢量或者图片  
 
 重要的字体度量参数：    
