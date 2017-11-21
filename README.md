@@ -51,5 +51,8 @@ public:
 [FreeType Design](https://www.freetype.org/freetype2/docs/design/index.html)    
 [FreeType Tutorial](https://www.freetype.org/freetype2/docs/tutorial/index.html)    
 
+For completeness, here again a link to the [example](https://www.freetype.org/freetype2/docs/tutorial/example1.c) used and explained in the [first part of the tutorial](https://www.freetype.org/freetype2/docs/tutorial/step1.html).     
+  
+
 freetype字体库是将文字渲染到矢量或者图片  
 
