@@ -60,3 +60,12 @@ For completeness, here again a link to the [example](https://www.freetype.org/fr
 
 freetype字体库是将文字渲染到矢量或者图片  
 
+例如，创建一个单独的字形位图正确的方法如下： 
+
+* 计算字形位图的大小，可以直接从字形度量计算出来，或者计算它的边界框（这在经过变换后非常有用，此时字形度量不再有效）。 
+
+* 根据计算的大小创建位图，别忘了用背景色填充象素缓冲； 
+
+* 平移轮廓，使左下角匹配到(0,0)。别忘了为了hinting，应该使用整型。通常，这就是说平移一个向量（-ROUND(xMin), -ROUND(yMin)）。 
+
+* 调用渲染功能，例如FT_Outline_Render()函数。 
