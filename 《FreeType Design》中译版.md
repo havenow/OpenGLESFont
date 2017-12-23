@@ -229,3 +229,45 @@ const FT_Module_Class* clazz);
 
 5、总结 
 最后，下图展示的上面所述内容，他表示FT基本设计的对象图 
+
+- #　四、模块类 
+
+在FT中有若干种模块 
+
+* 渲染模块，用来管理可缩放的字形映象。这意味这转换它们、计算边框、并将它们转换成单色和反走样位图。FT可以处理任何类型的字形映像，只要为它提供了一个渲染模块，FT缺省带了两个渲染器 
+
+raster 支持从向量轮廓（由FT_Outline对象描述）到单色位图的转换 
+
+smooth 支持同样的轮廓转换到高质量反走样的象素图，使用256级灰度。这个渲染器也支持直接生成span。 
+
+* 字体驱动模块，用来支持一种或多种特定字体格式，缺省情况下，FT由下列字体驱动 
+
+truetype 支持TrueType字体文件 
+
+type1 支持PostScript Type1字体，可以是二进制（.pfb）和ASCII(.pfa)格式，包括Multiple Master字体 
+
+cid 支持Postscript CID-keyed字体 
+
+cff 支持OpenType、CFF和CEF字体（CEF是CFF的一个变种，在Adobe的SVG Viewer中使用 
+
+winfonts 支持Windows位图字体，.fon和.fnt 
+
+
+字体驱动可以支持位图和可缩放的字形映象，一个特定支持Bezier轮廓的字体驱动通过FT_Outline可以提供他自己的hinter，或依赖FT的autohinter模块。 
+
+* 助手模块，用来处理一些共享代码，通常被多个字体驱动，甚至是其他模块使用，缺省的助手如下 
+
+sfnt 用来支持基于SFNT存储纲要的字体格式，TrueType和OpenType字体和其他变种 
+
+psnames 用来提供有关字形名称排序和Postscript编码/字符集的函数。例如他可以从一个Type1字形名称字典中自动合成一个Unicode字符图。 
+
+psaux 用来提供有关Type1字符解码的函数，type1、cid和cff都需要这个特性 
+
+
+* 最后，autohinter模块在FT中是特殊角色，当一个字体驱动没有提供自己的hint引擎时，他可以在字形装载时处理各自的字形轮廓。 
+
+我们现在来学习模块是如何描述以及如何被FreeType2库管理的。 
+1 FT_Module_Class结构 
+
+
+2 FT_Module类型 
