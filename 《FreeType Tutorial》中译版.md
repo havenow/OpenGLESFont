@@ -15,3 +15,16 @@
 5. Advanced Text Rendering: Transformation and Centering and Kerning
 6. Accessing Metrics in Design Font Units, and Scaling Them
 Conclusion
+
+- # 第一步 －－ 简易的字形装载 
+
+介绍 
+
+这是“FreeType2 教程”的第一部分。它将教会你如何： 
+
+* 初始化库 
+* 通过创建一个新的 face 对象来打开一个字体文件 
+* 以点或者象素的形式选择一个字符大小 
+* 装载一个字形(glyph)图像，并把它转换为位图 
+* 渲染一个简单的字符串 
+* 容易地渲染一个旋转的字符串 
