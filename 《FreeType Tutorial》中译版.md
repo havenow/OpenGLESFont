@@ -28,3 +28,42 @@ Conclusion
 * 装载一个字形(glyph)图像，并把它转换为位图 
 * 渲染一个简单的字符串 
 * 容易地渲染一个旋转的字符串 
+
+- # 1.头文件 
+
+下面的内容是编译一个使用了FreeType2库的应用程序所需要的指令。请谨慎阅读，自最近一次版本更新后我们已经更改了少许东西。 
+
+1.FreeType2 include 目录 
+
+你必须把FreeType2头文件的目录添加到编译包含(include)目录中。 
+
+注意，现在在Unix系统，你可以运行freetype-config脚本加上--cflags选项来获得正确的编译标记。这个脚本也可以用来检查安装在你系统中的库的版本，以及需要的库和连接标记。 
+
+2. 包含名为ft2build.h的文件 
+
+Ft2build.h包含了接下来要#include的公共FreeType2头文件的宏声明。 
+
+3. 包含主要的FreeType2 API头文件 
+
+你要使用FT_FREETYPE_H宏来完成这个工作，就像下面这样： 
+
+#include <ft2build.h> 
+#include FT_FREETYPE_H 
+
+FT_FREETYPE_H是在ftheader.h中定义的一个特别的宏。Ftheader.h包含了一些安装所特定的宏，这些宏指名了FreeType2 API的其他公共头文件。 
+
+你可以阅读“FreeType 2 API参考”的这个部分来获得头文件的完整列表。 
+
+＃include语句中宏的用法是服从ANSI的。这有几个原因： 
+
+* 这可以避免一些令人痛苦的与FreeType 1.x公共头文件的冲突。 
+
+* 宏名字不受限于DOS的8.3文件命名限制。象FT_MULTIPLE_MASTERS_H或FT_SFNT_NAMES_H这样的名字比真实的文件名ftmm.h和fsnames.h更具可读性并且更容易理解。 
+
+* 它允许特别的安装技巧，我们不在这里讨论它。 
+
+注意：从FreeType 2.1.6开始，旧式的头文件包含模式将不会再被支持。这意味着现在如果你做了象下面那样的事情，你将得到一个错误： 
+
+#include <freetype/freetype.h>    
+#include <freetype/ftglyph.h>    
+. . . 
