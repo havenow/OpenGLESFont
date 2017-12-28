@@ -66,7 +66,7 @@ FT_FREETYPE_H是在ftheader.h中定义的一个特别的宏。Ftheader.h包含�
 
 #include <freetype/freetype.h>    
 #include <freetype/ftglyph.h>    
-. . . 
+
 
 - # 2. 初始化库 
 
