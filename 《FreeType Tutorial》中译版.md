@@ -67,3 +67,28 @@ FT_FREETYPE_H是在ftheader.h中定义的一个特别的宏。Ftheader.h包含�
 #include <freetype/freetype.h>    
 #include <freetype/ftglyph.h>    
 . . . 
+
+- # 2. 初始化库 
+
+简单地创建一个FT_Library类型的变量，例如library，然后象下面那样调用函数FT_Init_FreeType： 
+
+#include <ft2build.h> 
+#include FT_FREETYPE_H 
+
+FT_LIBRARY library; 
+
+. . . 
+
+Error = FT_Init_FreeType ( &library ); 
+If ( error ) 
+{ 
+. . . 当初始化库时发生了一个错误 . . . 
+} 
+
+这个函数负责下面的事情： 
+
+* 它创建一个FreeType 2库的新实例，并且设置句柄library为它。 
+
+* 它装载库中FreeType所知道的每一个模块。除了别的以外，你新建的library对象可以优雅地处理TrueType, Type 1, CID-keyed 和OpenType/CFF字体。 
+
+就像你所看到的，这个函数返回一个错误代码，如同FreeType API的大部分其他函数一样。值为0的错误代码始终意味着操作成功了，否则，返回值指示错误，library设为NULL。 
