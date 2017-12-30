@@ -77,7 +77,7 @@ FT_FREETYPE_H是在ftheader.h中定义的一个特别的宏。Ftheader.h包含�
 
 FT_LIBRARY library; 
 
-. . . 
+
 
 Error = FT_Init_FreeType ( &library ); 
 If ( error ) 
