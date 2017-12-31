@@ -82,7 +82,7 @@ FT_LIBRARY library;
 Error = FT_Init_FreeType ( &library ); 
 If ( error ) 
 { 
-. . . 当初始化库时发生了一个错误 . . . 
+. . . 当初始化库时发生了一个错误 
 } 
 
 这个函数负责下面的事情： 
