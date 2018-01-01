@@ -76,7 +76,6 @@ typedef struct FT_FooRec_
 
 // fields for the foo class 
 
-… 
 
 }FT_FooRec; 
 
