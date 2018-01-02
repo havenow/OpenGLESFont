@@ -92,3 +92,73 @@ If ( error )
 * 它装载库中FreeType所知道的每一个模块。除了别的以外，你新建的library对象可以优雅地处理TrueType, Type 1, CID-keyed 和OpenType/CFF字体。 
 
 就像你所看到的，这个函数返回一个错误代码，如同FreeType API的大部分其他函数一样。值为0的错误代码始终意味着操作成功了，否则，返回值指示错误，library设为NULL。 
+
+- # 3．装载一个字体face 
+
+a.从一个字体文件装载 
+
+应用程序通过调用FT_New_Face创建一个新的face对象。一个face对象描述了一个特定的字样和风格。例如，’Times New Roman Regular’和’Times New Roman Italic’对应两个不同的face。 
+
+FT_Library library; /* 库的句柄 */ 
+FT_Face face; /* face对象的句柄 */ 
+
+error = FT_Init_FreeType( &library ); 
+if ( error ) { ... } 
+
+error = FT_New_Face( library, 
+"/usr/share/fonts/truetype/arial.ttf", 
+0, 
+&face ); 
+if ( error == FT_Err_Unknown_File_Format ) 
+{ 
+... 可以打开和读这个文件，但不支持它的字体格式 
+} 
+else if ( error ) 
+{ 
+... 其它的错误码意味着这个字体文件不能打开和读，或者简单的说它损坏了... 
+} 
+
+就如你所想到的，FT_NEW_Face打开一个字体文件，然后设法从中提取一个face。它的参数为：
+
+Library 
+一个FreeType库实例的句柄，face对象从中建立 
+
+Filepathname 
+字体文件路径名（一个标准的C字符串） 
+
+Face_index 
+某些字体格式允许把几个字体face嵌入到同一个文件中。 
+这个索引指示你想装载的face。 
+如果这个值太大，函数将会返回一个错误。Index 0总是正确的。 
+
+Face 
+一个指向新建的face对象的指针。 
+当失败时其值被置为NULL。 
+
+要知道一个字体文件包含多少个face，只要简单地装载它的第一个face(把face_index设置为0)，face->num_faces的值就指示出了有多少个face嵌入在该字体文件中。 
+
+b.从内存装载 
+
+如果你已经把字体文件装载到内存，你可以简单地使用FT_New_Memory_Face为它新建一个face对象，如下所示： 
+
+FT_Library library; /* 库的句柄 */ 
+FT_Face face; /* face对象的句柄 */ 
+
+
+error = FT_Init_FreeType( &library ); 
+if ( error ) { ... } 
+
+error = FT_New_Memory_Face( library, 
+buffer, /* 缓存的第一个字节 */ 
+size, /* 缓存的大小（以字节表示） */ 
+0, /* face索引 */ 
+&face ); 
+if ( error ) { ... } 
+
+如你所看到的，FT_New_Memory_Face简单地用字体文件缓存的指针和它的大小（以字节计算）代替文件路径。除此之外，它与FT_New_Face的语义一致。 
+
+c.从其他来源装载（压缩文件，网络，等） 
+
+使用文件路径或者预装载文件到内存是简单的，但还不足够。FreeType 2可以支持通过你自己实现的I/O程序来装载文件。 
+
+这是通过FT_Open_Face函数来完成的。FT_Open_Face可以实现使用一个自定义的输入流，选择一个特定的驱动器来打开，乃至当创建该对象时传递外部参数给字体驱动器。我们建议你查阅“FreeType 2参考手册”，学习如何使用它。
