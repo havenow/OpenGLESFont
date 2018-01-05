@@ -226,3 +226,122 @@ face, /* face对象句柄 */
 这个例子把字符象素设置为16x16象素。如前所说的，尺寸中的任一个为0意味着“与另一个尺寸值相等”。 
 
 注意这两个函数都返回错误码。通常，错误会发生在尝试对定长字体格式（如FNT或PCF）设置不在face->fixed_size数组中的象素尺寸值。 
+
+- # 6．装载一个字形图像 
+
+a.把一个字符码转换为一个字形索引 
+
+通常，一个应用程序想通过字符码来装载它的字形图像。字符码是一个特定编码中代表该字符的数值。例如，字符码64代表了ASCII编码中的’A’。 
+
+一个face对象包含一个或多个字符表(charmap)，字符表是用来转换字符码到字形索引的。例如，很多TrueType字体包含两个字符 表，一个用来转换Unicode字符码到字形索引，另一个用来转换Apple Roman编码到字形索引。这样的字体既可以用在Windows（使用Unicode）和Macintosh（使用Apple Roman）。同时要注意，一个特定的字符表可能没有覆盖完字体里面的全部字形。 
+
+当新建一个face对象时，它默认选择Unicode字符表。如果字体没包含Unicode字符表，FreeType会尝试在字形名的基础上模拟 一个。注意，如果字形名是不标准的那么模拟的字符表有可能遗漏某些字形。对于某些字体，包括符号字体和旧的亚洲手写字体，Unicode模拟是不可能的。 
+
+我们将在稍后叙述如何寻找face中特定的字符表。现在我们假设face包含至少一个Unicode字符表，并且在调用FT_New_Face时已经被选中。我们使用FT_Get_Char_Index把一个Unicode字符码转换为字形索引，如下所示： 
+
+glyph_index = FT_Get_Char_Index( face, charcode ); 
+
+这个函数会在face里被选中的字符表中查找与给出的字符码对应的字形索引。如果没有字符表被选中，这个函数简单的返回字符码。 
+
+注意，这个函数是FreeType中罕有的不返回错误码的函数中的一个。然而，当一个特定的字符码在face中没有字形图像，函数返回0。按照约定，它对应一个特殊的字形图像――缺失字形，通常会显示一个框或一个空格。 
+
+b.从face中装载一个字形 
+
+一旦你获得了字形索引，你便可以装载对应的字形图像。在不同的字体中字形图像存储为不同的格式。对于固定尺寸字体格式，如FNT或者PCF，每一 个图像都是一个位图。对于可伸缩字体格式，如TrueType或者Type1，使用名为轮廓(outlines)的矢量形状来描述每一个字形。一些字体格 式可能有更特殊的途径来表示字形（如MetaFont――但这个格式不被支持）。幸运的，FreeType2有足够的灵活性，可以通过一个简单的API支 持任何类型的字形格式。 
+
+字形图像存储在一个特别的对象――字形槽(glyph slot)中。就如其名所暗示的，一个字形槽只是一个简单的容器，它一次只能容纳一个字形图像，可以是位图，可以是轮廓，或者其他。每一个face对象都 有一个字形槽对象，可以通过face->glyph来访问。它的字段在FT_GlyphSlotRec结构的文档中解释了。 
+
+通过调用FT_Load_Glyph来装载一个字形图像到字形槽中，如下： 
+
+error = FT_Load_Glyph( 
+face, /* face对象的句柄 */ 
+glyph_index, /* 字形索引 */ 
+load_flags ); /* 装载标志，参考下面 */ 
+
+load_flags的值是位标志集合，是用来指示某些特殊操作的。其默认值是FT_LOAD_DEFAULT即0。 
+
+这个函数会设法从face中装载对应的字形图像： 
+
+* 如果找到一个对应该字形和象素尺寸的位图，那么它将会被装载到字形槽中。嵌入的位图总是比原生的图像格式优先装载。因为我们假定对一个字形，它有更高质量的版本。这可以用FT_LOAD_NO_BITMAP标志来改变。 
+
+* 否则，将装载一个该字形的原生图像，把它伸缩到当前的象素尺寸，并且对应如TrueType和Type1这些格式，也会完成hinted操作。 
+
+字段face->glyph->format描述了字形槽中存储的字形图像的格式。如果它的值不是FT_GLYPH_FORMAT_BITMAP，你可以通过FT_Render_Glyph把它直接转换为一个位图。如下： 
+
+error = FT_Render_Glyph( face->glyph, /* 字形槽 */ 
+render_mode ); /* 渲染模式 */ 
+
+render_mode参数是一个位标志集合，用来指示如何渲染字形图像。把它设为FT_RENDER_MODE_NORMAL渲染出一个高质量的抗锯齿(256级灰度)位图。这是默认情况，如果你想生成黑白位图，可以使用FT_RENDER_MODE_MONO标志。 
+
+一旦你生成了一个字形图像的位图，你可以通过glyph->bitmap(一个简单的位图描述符)直接访问，同时用glyph->bitmap_left和glyph->bitmap_top来指定起始位置。 
+
+要注意，bitmap_left是从字形位图当前笔位置到最左边界的水平距离，而bitmap_top是从笔位置（位于基线）到最高边界得垂直距离。他么是正数，指示一个向上的距离。 
+
+下一部分将给出字形槽内容的更多细节，以及如何访问特定的字形信息（包括度量）。 
+
+c.使用其他字符表 
+
+如前面所说的，当一个新face对象创建时，它会寻找一个Unicode字符表并且选择它。当前被选中的字符表可以通过 face->charmap访问。当没有字符表被选中时，该字段为NULL。这种情况在你从一个不含Unicode字符表的字体文件（这种文件现在 非常罕见）创建一个新的FT_Face对象时发生。 
+
+有两种途径可以在FreeType 2中选择不同的字符表。最轻松的途径是你所需的编码已经有对应的枚举定义在FT_FREETYPE_H中，例如FT_ENCODING_BIG5。在这种情况下，你可以简单地调用FT_Select_CharMap，如下： 
+
+error = FT_Select_CharMap( 
+face, /* 目标face对象 */ 
+FT_ENCODING_BIG5 ); /* 编码 */ 
+
+另一种途径是手动为face解析字符表。这通过face对象的字段num_charmaps和charmaps(注意这是复数)来访问。如你想到 的，前者是face中的字符表的数目，后者是一个嵌入在face中的指向字符表的指针表(a table of pointers to the charmaps)。 
+
+每一个字符表有一些可见的字段，用来更精确地描述它，主要用到的字段是charmap->platform_id和charmap->encoding_id。这两者定义了一个值组合，以更普 
+通的形式用来描述该字符表。 
+
+每一个值组合对应一个特定的编码。例如组合(3,1)对应Unicode。组合列表定义在TrueType规范中，但你也可以使用文件FT_TRUETYPE_IDS_H来处理它们，该文件定义了几个有用的常数。 
+
+要选择一个具体的编码，你需要在规范中找到一个对应的值组合，然后在字符表列表中寻找它。别忘记，由于历史的原因，某些编码会对应几个值组合。这里是一些代码： 
+
+FT_CharMap found = 0; 
+FT_CharMap charmap; 
+int n; 
+
+
+for ( n = 0; n < face->num_charmaps; n++ ) 
+{ 
+charmap = face->charmaps[n]; 
+if ( charmap->platform_id == my_platform_id && 
+charmap->encoding_id == my_encoding_id ) 
+{ 
+found = charmap; 
+break; 
+} 
+} 
+
+if ( !found ) { ... } 
+
+/* 现在，选择face对象的字符表*/ 
+error = FT_Set_CharMap( face, found ); 
+if ( error ) { ... } 
+
+一旦某个字符表被选中，无论通过FT_Select_CharMap还是通过FT_Set_CharMap，它都会在后面的FT_Get_Char_Index调用使用。 
+
+d.字形变换 
+
+当字形图像被装载时，可以对该字形图像进行仿射变换。当然，这只适用于可伸缩（矢量）字体格式。 
+
+简单地调用FT_Set_Transform来完成这个工作，如下： 
+
+error = FT_Set_Transform( 
+face, /* 目标face对象 */ 
+&matrix, /* 指向2x2矩阵的指针 */ 
+&delta ); /* 指向2维矢量的指针 */ 
+
+这个函数将对指定的face对象设置变换。它的第二个参数是一个指向FT_Matrix结 
+构的指针。该结构描述了一个2x2仿射矩阵。第三个参数是一个指向FT_Vector结构的指针。该结构描述了一个简单的二维矢量。该矢量用来在2x2变换后对字形图像平移。 
+
+注意，矩阵指针可以设置为NULL，在这种情况下将进行恒等变换。矩阵的系数是16.16形式的固定浮点单位。 
+
+矢量指针也可以设置为NULL，在这种情况下将使用(0, 0)的delta。矢量坐标以一个象素的1/64为单位表示（即通常所说的26.6固定浮点格式）。 
+
+注意：变换将适用于使用FT_Load_Glyph装载的全部字形，并且完全独立于任何hinting处理。这意味着你对一个12象素的字形进行2倍放大变换不会得到与24象素字形相同的结果（除非你禁止hints）。 
+
+如果你需要使用非正交变换和最佳hints，你首先必须把你的变换分解为一个伸缩部分和一个旋转/剪切部分。使用伸缩部分来计算一个新的字符象素大小，然后使用旋转/剪切部分来调用FT_Set_Transform。这在本教程的后面部分有详细解释。 
+
+同时要注意，对一个字形位图进行非同一性变换将产生错误。 
