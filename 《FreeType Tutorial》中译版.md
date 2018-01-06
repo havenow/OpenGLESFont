@@ -345,3 +345,170 @@ face, /* 目标face对象 */
 如果你需要使用非正交变换和最佳hints，你首先必须把你的变换分解为一个伸缩部分和一个旋转/剪切部分。使用伸缩部分来计算一个新的字符象素大小，然后使用旋转/剪切部分来调用FT_Set_Transform。这在本教程的后面部分有详细解释。 
 
 同时要注意，对一个字形位图进行非同一性变换将产生错误。 
+
+- # 7. 简单的文字渲染 
+
+现在我们将给出一个非常简单的例子程序，该例子程序渲染一个8位Latin-1文本字符串，并且假定face包含一个Unicode字符表。 
+
+该程序的思想是建立一个循环，在该循环的每一次迭代中装载一个字形图像，把它转换为一个抗锯齿位图，把它绘制到目标表面(surface)上，然后增加当前笔的位置。 
+
+a.基本代码 
+
+下面的代码完成我们上面提到的简单文本渲染和其他功能。 
+
+FT_GlyphSlot slot = face->glyph; /* 一个小捷径 */ 
+int pen_x, pen_y, n; 
+
+
+... initialize library ... 
+... create face object ... 
+... set character size ... 
+
+pen_x = 300; 
+pen_y = 200; 
+
+for ( n = 0; n < num_chars; n++ ) 
+{ 
+FT_UInt glyph_index; 
+
+
+/* 从字符码检索字形索引 */ 
+glyph_index = FT_Get_Char_Index( face, text[n] ); 
+
+/* 装载字形图像到字形槽（将会抹掉先前的字形图像） */ 
+error = FT_Load_Glyph( face, glyph_index, FT_LOAD_DEFAULT ); 
+if ( error ) 
+continue; /* 忽略错误 */ 
+
+/* 转换为一个抗锯齿位图 */ 
+error = FT_Render_Glyph( face->glyph, ft_render_mode_normal ); 
+if ( error ) 
+continue; 
+
+/* 现在，绘制到我们的目标表面(surface) */ 
+my_draw_bitmap( &slot->bitmap, 
+pen_x + slot->bitmap_left, 
+pen_y - slot->bitmap_top ); 
+
+/* 增加笔位置 */ 
+pen_x += slot->advance.x >> 6; 
+pen_y += slot->advance.y >> 6; /* 现在还是没用的 */ 
+} 
+
+这个代码需要一些解释： 
+
+* 我们定义了一个名为slot的句柄，它指向face对象的字形槽。（FT_GlyphSlot类型是一个指针）。这是为了便于避免每次都使用face->glyph->XXX。 
+
+* 我们以slot->advance增加笔位置，slot->advance符合字形的步进宽度（也就是通常所说的走格(escapement)）。步进矢量以象素的1/64为单位表示，并且在每一次迭代中删减为整数象素。 
+
+* 函数my_draw_bitmap不是FreeType的一部分，但必须由应用程序提供以用来绘制位图到目标表面。在这个例子中，该函数以一个FT_Bitmap描述符的指针和它的左上角位置为参数。 
+
+* Slot->bitmap_top的值是正数，指字形图像顶点与pen_y的垂直距离。我们假定my_draw_bitmap采用的坐标使用一样的约定（增加Y值对应向下的扫描线）。我们用pen_y减它，而不是加它。 
+
+b.精练的代码 
+
+下面的代码是上面例子程序的精练版本。它使用了FreeType 2中我们还没有介绍的特性和函数，我们将在下面解释： 
+
+FT_GlyphSlot slot = face->glyph; /* 一个小捷径 */ 
+FT_UInt glyph_index; 
+int pen_x, pen_y, n; 
+
+
+... initialize library ... 
+... create face object ... 
+... set character size ... 
+
+pen_x = 300; 
+pen_y = 200; 
+
+for ( n = 0; n < num_chars; n++ ) 
+{ 
+/* 装载字形图像到字形槽（将会抹掉先前的字形图像） */ 
+error = FT_Load_Char( face, text[n], FT_LOAD_RENDER ); 
+if ( error ) 
+continue; /* 忽略错误 */ 
+
+/* 现在，绘制到我们的目标表面(surface) */ 
+my_draw_bitmap( &slot->bitmap, 
+pen_x + slot->bitmap_left, 
+pen_y - slot->bitmap_top ); 
+
+/* 增加笔位置 */ 
+pen_x += slot->advance.x >> 6; 
+} 
+
+我们简化了代码的长度，但它完成相同的工作： 
+
+* 我们使用函数FT_Loac_Char代替FT_Load_Glyph。如你大概想到的，它相当于先调用GT_Get_Char_Index然后调用FT_Get_Load_Glyph。 
+
+* 我们不使用FT_LOAD_DEFAULT作为装载模式，使用FT_LOAD_RENDER。它指示了字形图像必须立即转换为一个抗锯齿位图。这是一个捷径，可以取消明显的调用FT_Render_Glyph，但功能是相同的。 
+注意，你也可以指定通过附加FT_LOAD_MONOCHROME装载标志来获得一个单色位图。 
+
+c.更高级的渲染 
+
+现在，让我们来尝试渲染变换文字（例如通过一个环）。我们可以用FT_Set_Transform来完成。这里是示例代码： 
+
+FT_GlyphSlot slot; 
+FT_Matrix matrix; /* 变换矩阵 */ 
+FT_UInt glyph_index; 
+FT_Vector pen; /* 非变换原点 */ 
+int n; 
+
+
+... initialize library ... 
+... create face object ... 
+... set character size ... 
+
+slot = face->glyph; /* 一个小捷径 */ 
+
+/* 准备矩阵 */ 
+matrix.xx = (FT_Fixed)( cos( angle ) * 0x10000L ); 
+matrix.xy = (FT_Fixed)(-sin( angle ) * 0x10000L ); 
+matrix.yx = (FT_Fixed)( sin( angle ) * 0x10000L ); 
+matrix.yy = (FT_Fixed)( cos( angle ) * 0x10000L ); 
+
+/* 26.6 笛卡儿空间坐标中笔的位置，以(300, 200)为起始 */ 
+pen.x = 300 * 64; 
+pen.y = ( my_target_height - 200 ) * 64; 
+
+for ( n = 0; n < num_chars; n++ ) 
+{ 
+/* 设置变换 */ 
+FT_Set_Transform( face, &matrix, &pen ); 
+
+/* 装载字形图像到字形槽（将会抹掉先前的字形图像） */ 
+error = FT_Load_Char( face, text[n], FT_LOAD_RENDER ); 
+if ( error ) 
+continue; /* 忽略错误 */ 
+
+/* 现在，绘制到我们的目标表面（变换位置） */ 
+my_draw_bitmap( &slot->bitmap, 
+slot->bitmap_left, 
+my_target_height - slot->bitmap_top ); 
+
+/* 增加笔位置 */ 
+pen.x += slot->advance.x; 
+pen.y += slot->advance.y; 
+} 
+
+一些说明： 
+
+* 现在我们使用一个FT_Vector类型的矢量来存储笔位置，其坐标以象素的1/64为单位表示，并且倍增。该位置表示在笛卡儿空间。 
+
+* 不同于系统典型的对位图使用的坐标系（其最高的扫描线是坐标0），FreeType中，字形图像的装载、变换和描述总是采用笛卡儿坐标系（这意味着增加Y对应向上的扫描线）。因此当我们定义笔位置和计算位图左上角时必须在两个系统之间转换。 
+
+* 我们对每一个字形设置变换来指示旋转矩阵以及使用一个delta来移动转换后的图像到当前笔位置（在笛卡儿空间，不是位图空间）。结 果，bitmap_left和bitmap_top的值对应目标空间象素中的位图原点。因此，我们在调用my_draw_bitmap时不在它们的值上加 pen.x或pen.y。 
+
+* 步进宽度总会在变换后返回，这就是它可以直接加到当前笔位置的原因。注意，这次它不会四舍五入。 
+
+一个例子完整的源代码可以在这里找到。 
+
+要很注意，虽然这个例子比前面的更复杂，但是变换效果是完全一致的。因此它可以作为一个替换（但更强大）。 
+
+然而该例子有少许缺点，我们将在本教程的下一部分中解释和解决。 
+
+结论 
+
+在这个部分，你已经学习了FreeType2的基础以及渲染旋转文字的充分知识。 
+
+下一部分将深入了解FreeType 2 API更详细的资料，它可以让你直接访问字形度量标准和字形图像，还能让你学习到如何处理缩放、hinting、自居调整，等等。 
