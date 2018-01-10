@@ -581,3 +581,140 @@ linearHoriAdvance
 
 linearVertAdvance 
 这与linearHoriAdvance类似，但它用于字形的垂直推进高度。只有当字体face包含垂直度量时这个值才是可靠的。 
+
+- # 2.管理字形图像 
+
+转载到字形槽得字形图像可以转换到一幅位图中，这可以在装载时使用FT_LOAD_RENDER标志或者调用FT_Render_Glyph函数实现。每一次你装载一个新的字形图像到字形槽，前面装载的将会从字形槽中抹去。 
+
+但是，你可能需要从字形槽中提取这个图像，以用来在你的应用程序中缓存它，或者进行附加的变换，或者在转换到位图前测量它。 
+
+FreeType 2 API有一个特殊的扩展能够以一种灵活和普通的方式处理字形图像。要使用它，你首先需要包含FT_GLYPH_H头文件，如下： 
+
+#include FT_GLYPH_H 
+
+现在我们将解释如何使用这个文件定义的这个函数。 
+
+a.提取字形图像 
+
+你可以很简单地提取一个字形图像。这里有一向代码向你展示如何去做： 
+
+FT_Glyph glyph; /* 字形图像的句柄 */ 
+
+... 
+error = FT_Load_Glyph( face, glyph_index, FT_LOAD_NORMAL ); 
+if ( error ) { ... } 
+
+error = FT_Get_Glyph( face->glyph, &glyph ); 
+if ( error ) { ... } 
+
+如你所看到的，我们： 
+
+* 创建一个类型为FT_Glyph，名为glyph的变量。这是一个字形图像的句柄（即指针）。 
+
+* 装载字形图像（通常情况下）到face的字形槽中。我们不使用FT_LOAD_RENDER因为我们想抓取一个可缩放的字形图像，以便后面对其进行变换。 
+
+* 通过调用FT_Get_Glyph，把字形图像从字形槽复制到新的FT_Glyph对象glyph中。这个函数返回一个错误码并且设置glyph。 
+
+要非常留意，被取出的字形跟字形槽中的原始字形的格式是一样的。例如，如果我们从TrueType字体文件中装载一个字形，字形图像将是可伸缩的矢量轮廓。 
+
+如果你想知道字形是如何模型和存储的，你可以访问flyph->format字段。一个新的字形对象可以通过调用FT_Done_Glyph来销毁。 
+
+字形对象正好包含一个字形图像和一个2D矢量，2D矢量以16.16固定浮点坐标的形式表示字形的推进。后者可以直接通过glyph->advance访问。 
+
+注意，不同于其他TrueType对象，库不保存全部分配了的字形对象的列表。这意味着你必须自己销毁它们，而不是依靠FT_Done_FreeType完成全部的清除。 
+
+b.变换和复制字形图像 
+
+如果字形图像是可伸缩的（例如，如果glyph->format不等于FT_GLYPH_FORMAT_BITMAP），那么就可以随时通过调用FT_Glyph_Transform来变换该图像。 
+
+你也可以通过FT_Glyph_Copy复制一个字形图像。这里是一些例子代码： 
+
+FT_Glyph glyph, glyph2; 
+FT_Matrix matrix; 
+FT_Vector delta; 
+
+... 装载字形图像到 `glyph' ... 
+
+/* 复制 glyph 到 glyph2 */ 
+
+error = FT_Glyph_Copy( glyph, &glyph2 ); 
+if ( error ) { ... 无法复制（内存不足） ... } 
+
+/* 平移 `glyph' */ 
+
+delta.x = -100 * 64; /* 坐标是 26.6 象素格式的 */ 
+delta.y = 50 * 64; 
+
+FT_Glyph_Transform( glyph, 0, &delta ); 
+
+/* 变换 glyph2 （水平剪切） */ 
+
+matrix.xx = 0x10000L; 
+matrix.xy = 0.12 * 0x10000L; 
+matrix.yx = 0; 
+matrix.yy = 0x10000L; 
+
+FT_Glyph_Transform( glyph2, &matrix, 0 ); 
+
+注意，2x2矩阵变换总是适用于字形的16.16推进矢量，所以你不需要重修计算它。 
+
+c.测量字形图像 
+
+你也可以通过FT_Glyph_Get_CBox函数检索任意字形图像（无论是可伸缩或者不可伸缩的）的控制（约束）框，如下： 
+
+FT_BBox bbox; 
+
+... 
+FT_Glyph_Get_CBox( glyph, bbox_mode, &bbox ); 
+
+坐标是跟字形的原点(0, 0)相关的，使用y向上的约定。这个函数取一个特殊的参数：bbox_mode来指出如何表示框坐标。 
+
+如果字形装载时使用了FT_LOAD_NO_SCALE标志，bbox_mode必须设置为FT_GLYPH_BBOX_UNSCALED，以此 来获得以26.6象素格式为单位表示的不可缩放字体。值FT_GLYPH_BBOX_SUBPIXELS是这个常量的另一个名字。 
+
+要注意，框(box)的最大坐标是唯一的，这意味着你总是可以以整数或26.6象素的形式计算字形图像的宽度和高度，公式如下： 
+
+width = bbox.xMax - bbox.xMin; 
+height = bbox.yMax - bbox.yMin; 
+
+同时要注意，对于26.6坐标，如果FT_GLYPH_BBOX_GRIDFIT被用作为bbox_mode，坐标也将网格对齐，符合如下公式： 
+
+bbox.xMin = FLOOR( bbox.xMin ) 
+bbox.yMin = FLOOR( bbox.yMin ) 
+bbox.xMax = CEILING( bbox.xMax ) 
+bbox.yMax = CEILING( bbox.yMax ) 
+
+要把bbox以整数象素坐标的形式表示，把bbox_mode设置为FT_GLYPH_BBOX_TRUNCATE。 
+
+最后，要把约束框以网格对齐象素坐标的形式表示，把bbox_mode设置为FT_GLYPH_BBOX_PIXELS。 
+
+d.转换字形图像为位图 
+
+当你已经把字形对象缓存或者变换后，你可能需要转换它到一个位图。这可以通过FT_Glyph_To_Bitmap函数简单得实现。它负责转换任何字形对象到位图，如下： 
+
+FT_Vector origin; 
+origin.x = 32;	/* 26.6格式的1/2象素 */ 
+origin.y = 0; 
+error = FT_Glyph_To_Bitmap( 
+&glyph, 
+render_mode, 
+&origin, 
+1 );	/* 销毁原始图像 == true */ 
+
+一些注解： 
+
+* 第一个参数是源字形句柄的地址。当这个函数被调用时，它读取该参数来访问源字形对象。调用结束后，这个句柄将指向一个新的包含渲染后的位图的字形对象。 
+
+* 第二个参数时一个标准渲染模式，用来指定我们想要哪种位图。它取FT_RENDER_MODE_DEFAULT时表示8位颜色深度的抗锯齿位图；它取FT_RENDER_MODE_MONO时表示1位颜色深度的黑白位图。 
+
+* 第三个参数是二维矢量的指针。该二维矢量是在转换前用来平移源字形图像的。要注意，函数调用后源图像将被平移回它的原始位置（这样便不会有变化）。如果你在渲染前不需要平移源字形，设置这个指针为0。 
+
+* 最后一个参数是一个布尔值，用来指示该函数是否要销毁源字形对象。如果为false，源字形对象不会被销毁，即使它的句柄丢失了（客户应用程序需要自己保留句柄）。 
+
+如果没返回错误，新的字形对象总是包含一个位图。并且你必须把它的句柄进行强制类型转换，转换为FT_BitmapGlyph类型，以此访问它的内容。这个类型是FT_Glyph的一种“子类”，它包含下面的附加字段（看FT_BitmapGlyphRec）： 
+
+Left 
+类似于字形槽的bitmap_left字段。这是字形原点(0,0)到字形位图最左边象素的水平距离。它以整数象素的形式表示。 
+Top 
+类似于字形槽的bitmap_top字段。它是字形原点(0,0)到字形位图最高象素之间的垂直距离（更精确来说，到位图上面的象素）。这个距离以整数象素的形式表示，并且y轴向上为正。 
+Bitmap 
+这是一个字形对象的位图描述符，就像字形槽的bitmap字段。 
