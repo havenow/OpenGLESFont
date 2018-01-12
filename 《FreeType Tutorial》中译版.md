@@ -824,3 +824,238 @@ kerning_mode, /* 字距调整模式 */
 最后，值FT_KERNING_UNSCALED是用来返回预设字距调整距离，它以字体单位的格式表示。你可以在稍后用本部分的最后一章描述的算式把它拉伸到设备空间。 
 
 注意，“左”和“右”位置是指字符串字形的可视顺序。这对双向或由右到左的文本来说是很重要的。 
+
+- # 4.简单的文本渲染：字距调整+居中 
+
+为了显示我们刚刚学到的知识，现在我们将示范如何修改第一部分给出的代码以渲染一个字符串，并且增强它，使它支持字距调整和延迟渲染。 
+
+a.字距调整支持 
+
+要是我们只考虑处理从左到右的文字，如拉丁文，那在我们的代码上添加字距调整是很容易办到的。我们只要获取两个字形之间的字距调整距离，然后适当地改变笔位置。代码如下： 
+
+FT_GlyphSlot slot = face->glyph; /* 一个小捷径 */ 
+FT_UInt glyph_index; 
+FT_Bool use_kerning; 
+FT_UInt previous; 
+int pen_x, pen_y, n; 
+
+... 初始化库 ... 
+... 创建face对象 ... 
+... 设置字符尺寸 ... 
+
+pen_x = 300; 
+pen_y = 200; 
+
+use_kerning = FT_HAS_KERNING( face ); 
+previous = 0; 
+
+for ( n = 0; n < num_chars; n++ ) 
+{ 
+/* 把字符码转换为字形索引 */ 
+glyph_index = FT_Get_Char_Index( face, text[n] ); 
+
+/* 获取字距调整距离，并且移动笔位置 */ 
+if ( use_kerning && previous && glyph_index ) 
+{ 
+FT_Vector delta; 
+
+FT_Get_Kerning( face, previous, glyph_index, 
+ft_kerning_mode_default, &delta ); 
+
+pen_x += delta.x >> 6; 
+} 
+
+/* 装载字形图像到字形槽（擦除之前的字形图像） */ 
+Error = FT_Load_Glyph(face, glyph_index, FT_LOAD_RENDER); 
+if ( error ) 
+continue; /* 忽略错误 */ 
+
+/* 现在绘制到我们的目标表面(surface) */ 
+my_draw_bitmap( &slot->bitmap, 
+pen_x + slot->bitmap_left, 
+pen_y - slot->bitmap_top ); 
+
+/* 增加笔位置 */ 
+pen_x += slot->advance.x >> 6; 
+
+/* 记录当前字形索引 */ 
+previous = glyph_index; 
+} 
+
+若干注解： 
+
+* 因为字距调整是由字形索引决定的，我们需要显式转换我们的字符代码到字形索引，然后调用FT_Load_Glyph而不是FT_Load_Char。 
+
+* 我们使用一个名为use_kerning的变量，它的值为宏FT_HAS_KERNING的结果。当我们知道字体face不含有字距调整信息，不调用FT_Get_kerning程序将执行得更快。 
+
+* 我们在绘制一个新字形前移动笔位置。 
+
+* 我们以值0初始化变量previous，这表示“字形缺失(missing glyph)”（在Postscript中，这用.notdef表示）。该字形也没有字距调整距离。 
+
+* 我们不检查FT_Get_kerning返回得错误码。这是因为这个函数在错误发生时总是把delta置为(0,0)。 
+
+b.居中 
+
+我们的代码开始变得有趣了，但对普通应用来说仍然有点太简单了。例如，笔的位置在我们渲染前就决定了。通常，你要在计算文本的最终位置（居中，等）前布局它和测量它，或者执行自动换行。 
+
+现在让我们把文字渲染函数分解为两个截然不同但连续的两部分：第一部分将在基线上定位每一个字形图像，第二部分将渲染字形。我们将看到，这有很多好处。 
+
+我们先保存每一个独立的字形图像，以及它们在基线上面的位置。这可以通过如下的代码完成： 
+
+FT_GlyphSlot slot = face->glyph; /* 一个小捷径 */ 
+FT_UInt glyph_index; 
+FT_Bool use_kerning; 
+FT_UInt previous; 
+int pen_x, pen_y, n; 
+
+FT_Glyph glyphs[MAX_GLYPHS]; /* 字形图像 */ 
+FT_Vector pos [MAX_GLYPHS]; /* 字形位置 */ 
+FT_UInt num_glyphs; 
+
+... 初始化库 ... 
+... 创建face对象 ... 
+... 设置字符尺寸 ... 
+
+pen_x = 0; /* 以 (0,0) 开始 */ 
+pen_y = 0; 
+
+num_glyphs = 0; 
+use_kerning = FT_HAS_KERNING( face ); 
+previous = 0; 
+
+for ( n = 0; n < num_chars; n++ ) 
+{ 
+/* 把字符码转换为字形索引 */ 
+glyph_index = FT_Get_Char_Index( face, text[n] ); 
+
+/* 获取字距调整距离，并且移动笔位置 */ 
+if ( use_kerning && previous && glyph_index ) 
+{ 
+FT_Vector delta; 
+
+FT_Get_Kerning( face, previous, glyph_index, 
+FT_KERNING_DEFAULT, &delta ); 
+
+pen_x += delta.x >> 6; 
+} 
+
+/* 保存当前笔位置 */ 
+pos[num_glyphs].x = pen_x; 
+pos[num_glyphs].y = pen_y; 
+
+/* 装载字形图像到字形槽，不渲染它 */ 
+error=FT_Load_Glyph(face, glyph_index, FT_LOAD_DEFAULT); 
+if ( error ) 
+continue; /* 忽略错误，跳到下一个字形 */ 
+
+/* 提取字形图像并把它保存在我们的表中 */ 
+error = FT_Get_Glyph( face->glyph, &glyphs[num_glyphs] ); 
+if ( error ) 
+continue; /* 忽略错误，跳到下一个字形 */ 
+
+/* 增加笔位置 */ 
+pen_x += slot->advance.x >> 6; 
+
+/* 记录当前字形索引 */ 
+previous = glyph_index; 
+
+/* 增加字形数量 */ 
+num_glyphs++; 
+} 
+
+相对于我们之前的代码，这有轻微的变化：我们从字形槽中提取每一个字形图像，保存每一个字形图像和它对应的位置在我们的表中。 
+
+注意pen_x包含字符串的整体前移值。现在我们可以用一个很简单的函数计算字符串的边界框(bounding box)，如下： 
+
+void compute_string_bbox( FT_BBox *abbox ) 
+{ 
+FT_BBox bbox; 
+
+/* 初始化字符串bbox为“空”值 */ 
+bbox.xMin = bbox.yMin = 32000; 
+bbox.xMax = bbox.yMax = -32000; 
+
+/* 对于每一个字形图像，计算它的边界框，平移它，并且增加字符串bbox */ 
+for ( n = 0; n < num_glyphs; n++ ) 
+{ 
+FT_BBox glyph_bbox; 
+
+FT_Glyph_Get_CBox( glyphs[n], ft_glyph_bbox_pixels, 
+&glyph_bbox ); 
+
+glyph_bbox.xMin += pos[n].x; 
+glyph_bbox.xMax += pos[n].x; 
+glyph_bbox.yMin += pos[n].y; 
+glyph_bbox.yMax += pos[n].y; 
+
+if ( glyph_bbox.xMin < bbox.xMin ) 
+bbox.xMin = glyph_bbox.xMin; 
+
+if ( glyph_bbox.yMin < bbox.yMin ) 
+bbox.yMin = glyph_bbox.yMin; 
+
+if ( glyph_bbox.xMax > bbox.xMax ) 
+bbox.xMax = glyph_bbox.xMax; 
+
+if ( glyph_bbox.yMax > bbox.yMax ) 
+bbox.yMax = glyph_bbox.yMax; 
+} 
+
+/* 检查我们是否真的增加了字符串bbox */ 
+if ( bbox.xMin > bbox.xMax ) 
+{ 
+bbox.xMin = 0; 
+bbox.yMin = 0; 
+bbox.xMax = 0; 
+bbox.yMax = 0; 
+} 
+
+/* 返回字符串bbox */ 
+*abbox = bbox; 
+} 
+
+最终得到的边界框尺寸以整数象素的格式表示，并且可以随后在渲染字符串前用来计算最终的笔位置，如下： 
+
+/* 计算整数象素表示的字符串尺度 */ 
+string_width = string_bbox.xMax - string_bbox.xMin; 
+string_height = string_bbox.yMax - string_bbox.yMin; 
+
+/* 计算以26.6笛卡儿象素表示的笔起始位置*/ 
+start_x = ( ( my_target_width - string_width ) / 2 ) * 64; 
+start_y = ( ( my_target_height - string_height ) / 2 ) * 64; 
+
+for ( n = 0; n < num_glyphs; n++ ) 
+{ 
+FT_Glyph image; 
+FT_Vector pen; 
+
+image = glyphs[n]; 
+
+pen.x = start_x + pos[n].x; 
+pen.y = start_y + pos[n].y; 
+
+error = FT_Glyph_To_Bitmap(&image, FT_RENDER_MODE_NORMAL, 
+&pen, 0 ); 
+if ( !error ) 
+{ 
+FT_BitmapGlyph bit = (FT_BitmapGlyph)image; 
+
+my_draw_bitmap( bit->bitmap, 
+bit->left, 
+my_target_height - bit->top ); 
+
+FT_Done_Glyph( image ); 
+} 
+} 
+
+一些说明： 
+
+* 笔位置以笛卡儿空间（例如，y向上）的形式表示。 
+
+* 我们调用FT_Glyph_To_Bitmap时destroy参数设置为0(false)，这是为了避免破坏原始字形图像。在执行该调用后，新的字形位图通过image访问，并且它的类型转变为FT_BitmapGlyph。 
+
+* 当调用FT_Glyph_To_Bitmap时，我们使用了平移。这可以确保位图字形对象的左区域和上区域已经被设置为笛卡儿空间中的正确的象素坐标。 
+
+* 当然，在渲染前我们仍然需要把象素坐标从笛卡儿空间转换到设备空间。因此在调用my_draw_bitmap前要先计算my_target_height – bitmap->top。 
+
+相同的循环可以用来把字符串渲染到我们的显示面(surface)任意位置，而不需要每一次都重新装载我们的字形图像。我们也可以决定实现自动换行或者只是绘制。 
