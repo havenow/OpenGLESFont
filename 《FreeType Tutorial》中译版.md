@@ -1059,3 +1059,211 @@ FT_Done_Glyph( image );
 * 当然，在渲染前我们仍然需要把象素坐标从笛卡儿空间转换到设备空间。因此在调用my_draw_bitmap前要先计算my_target_height – bitmap->top。 
 
 相同的循环可以用来把字符串渲染到我们的显示面(surface)任意位置，而不需要每一次都重新装载我们的字形图像。我们也可以决定实现自动换行或者只是绘制。 
+
+- # 5.高级文本渲染：变换 + 居中 + 字距调整 
+
+现在我们将修改我们的代码，以便可以容易地变换已渲染的字符串，例如旋转它。我们将以实行少许小改进开始： 
+
+a.打包然后平移字形 
+
+我们先把与一个字形图像相关的信息打包到一个结构体，而不是并行的数组。因此我们定义下面的结构体类型： 
+
+typedef struct TGlyph_ 
+{ 
+FT_UInt index; /* 字形索引 */ 
+FT_Vector pos; /* 基线上面的字形原点 */ 
+FT_Glyph image; /* 字形图像 */ 
+} TGlyph, *PGlyph; 
+
+我们在装载每一个字形图像过程中，在把它装载它在基线所在位置后便直接平移它。我们将看到，这有若干好处。我们的字形序列装载其因而变成： 
+
+FT_GlyphSlot slot = face->glyph; /* 一个小捷径 */ 
+FT_UInt glyph_index; 
+FT_Bool use_kerning; 
+FT_UInt previous; 
+int pen_x, pen_y, n; 
+
+TGlyph glyphs[MAX_GLYPHS]; /* 字形表 */ 
+PGlyph glyph; /* 表中的当前字形*/ 
+FT_UInt num_glyphs; 
+
+... 初始化库 ... 
+... 创建face对象 ... 
+... 设置字符尺寸 ... 
+
+pen_x = 0; /* 以 (0,0) 开始 */ 
+pen_y = 0; 
+
+num_glyphs = 0; 
+use_kerning = FT_HAS_KERNING( face ); 
+previous = 0; 
+
+glyph = glyphs; 
+for ( n = 0; n < num_chars; n++ ) 
+{ 
+glyph->index = FT_Get_Char_Index( face, text[n] ); 
+
+if ( use_kerning && previous && glyph->index ) 
+{ 
+FT_Vector delta; 
+
+FT_Get_Kerning( face, previous, glyph->index, 
+FT_KERNING_MODE_DEFAULT, &delta ); 
+
+pen_x += delta.x >> 6; 
+} 
+
+/* 保存当前笔位置 */ 
+glyph->pos.x = pen_x; 
+glyph->pos.y = pen_y; 
+
+error = FT_Load_Glyph(face,glyph_index,FT_LOAD_DEFAULT); 
+if ( error ) continue; 
+
+error = FT_Get_Glyph( face->glyph, &glyph->image ); 
+if ( error ) continue; 
+
+/* 现在平移字形图像 */ 
+FT_Glyph_Transform( glyph->image, 0, &glyph->pos ); 
+
+pen_x += slot->advance.x >> 6; 
+previous = glyph->index; 
+
+/* 增加字形的数量 */ 
+glyph++; 
+} 
+
+/* 计算已装载的字形的数量 */ 
+num_glyphs = glyph - glyphs; 
+
+注意，这个时候平移字形有若干好处。第一是当我们计算字符串的边界框时不需要平移字形bbox。代码将会变成这样： 
+
+void compute_string_bbox( FT_BBox *abbox ) 
+{ 
+FT_BBox bbox; 
+
+bbox.xMin = bbox.yMin = 32000; 
+bbox.xMax = bbox.yMax = -32000; 
+
+for ( n = 0; n < num_glyphs; n++ ) 
+{ 
+FT_BBox glyph_bbox; 
+
+FT_Glyph_Get_CBox( glyphs[n], &glyph_bbox ); 
+
+if (glyph_bbox.xMin < bbox.xMin) 
+bbox.xMin = glyph_bbox.xMin; 
+
+if (glyph_bbox.yMin < bbox.yMin) 
+bbox.yMin = glyph_bbox.yMin; 
+
+if (glyph_bbox.xMax > bbox.xMax) 
+bbox.xMax = glyph_bbox.xMax; 
+
+if (glyph_bbox.yMax > bbox.yMax) 
+bbox.yMax = glyph_bbox.yMax; 
+} 
+
+if ( bbox.xMin > bbox.xMax ) 
+{ 
+bbox.xMin = 0; 
+bbox.yMin = 0; 
+bbox.xMax = 0; 
+bbox.yMax = 0; 
+} 
+
+*abbox = bbox; 
+} 
+
+更详细描述：compute_string_bbox函数现在可以计算一个已转换的字形字符串的边界框。例如，我们可以做如下的事情： 
+
+FT_BBox bbox; 
+FT_Matrix matrix; 
+FT_Vector delta; 
+
+... 装载字形序列 ... 
+... 设置 "matrix" 和 "delta" ... 
+
+/* 变换字形 */ 
+for ( n = 0; n < num_glyphs; n++ ) 
+FT_Glyph_Transform( glyphs[n].image, &matrix, &delta ); 
+
+/* 计算已变换字形的边界框 */ 
+compute_string_bbox( &bbox ); 
+
+b.渲染一个已变换的字形序列 
+
+无论如何，如果我们想重用字形来以不同的角度或变换方式绘制字符串，直接变换序列中的字形都不是一个好主意。更好的方法是在字形被渲染前执行放射变换，如下面的代码所示： 
+
+FT_Vector start; 
+FT_Matrix transform; 
+
+/* 获取原始字形序列的 bbox */ 
+compute_string_bbox( &string_bbox ); 
+
+/* 计算整数象素表示的字符串尺度 */ 
+string_width = (string_bbox.xMax - string_bbox.xMin) / 64; 
+string_height = (string_bbox.yMax - string_bbox.yMin) / 64; 
+
+/* 设置26.6笛卡儿空间表示的笔起始位置 */ 
+start.x = ( ( my_target_width - string_width ) / 2 ) * 64; 
+start.y = ( ( my_target_height - string_height ) / 2 ) * 64; 
+
+/* 设置变换（旋转） */ 
+matrix.xx = (FT_Fixed)( cos( angle ) * 0x10000L ); 
+matrix.xy = (FT_Fixed)(-sin( angle ) * 0x10000L ); 
+matrix.yx = (FT_Fixed)( sin( angle ) * 0x10000L ); 
+matrix.yy = (FT_Fixed)( cos( angle ) * 0x10000L ); 
+
+for ( n = 0; n < num_glyphs; n++ ) 
+{ 
+FT_Glyph image; 
+FT_Vector pen; 
+FT_BBox bbox; 
+
+/* 创建原始字形的副本 */ 
+error = FT_Glyph_Copy( glyphs[n].image, &image ); 
+if ( error ) continue; 
+
+/* 变换副本（这将平移它到正确的位置） */ 
+FT_Glyph_Transform( image, &matrix, &start ); 
+
+/* 检查边界框；如果已变换的字形图像不在*/ 
+/* 我们的目标表面中，我们可以避免渲染它 */ 
+FT_Glyph_Get_CBox( image, ft_glyph_bbox_pixels, &bbox ); 
+if ( bbox.xMax <= 0 || bbox.xMin >= my_target_width || 
+bbox.yMax <= 0 || bbox.yMin >= my_target_height ) 
+continue; 
+
+/* 把字形图像转换为位图（销毁字形的副本！） */ 
+error = FT_Glyph_To_Bitmap( 
+&image, 
+FT_RENDER_MODE_NORMAL, 
+0, /* 没有附加的平移*/ 
+1 ); /* 销毁 "image" 指向的副本 */ 
+if ( !error ) 
+{ 
+FT_BitmapGlyph bit = (FT_BitmapGlyph)image; 
+
+my_draw_bitmap( bitmap->bitmap, 
+bitmap->left, 
+my_target_height - bitmap->top ); 
+FT_Done_Glyph( image ); 
+} 
+} 
+
+这份代码相对于原始版本有少许改变： 
+
+* 我们没改变原始的字形图像，而是变换该字形图像的拷贝。 
+
+* 我们执行“剪取”操作以处理渲染和绘制的字形不在我们的目标表面(surface)的情况。 
+
+* 当调用FT_Glyhp_To_Bitmap时，我们总是销毁字形图像的拷贝，这是为了销毁已变换的图像。注意，即使当这个函数返回错误码，该图像依然会被销毁（这就是为什么FT_Done_Glyph只在复合语句中被调用的原因）。 
+
+* 平移字形序列到起始笔位置集成到FT_Glyph_Transform函数，而不是FT_Glyph_To_Bitmap函数。 
+
+可以多次调用这个函数以渲染字符串到不同角度的，或者甚至改变计算start的方法以移动它到另外的地方。 
+
+这份代码是FreeType 2示范程序ftstring.c的基础。它可以被简单地扩展，在第一部发完成高级文本布局或自动换行，而第二部分不需改变。 
+
+无论如何，要注意通常的实现会使用一个字形缓冲以减少内存消耗。据个例子，让我们假定我们的字符串是“FreeType”。我们将在我们的表中保存字母‘e’的三个相同的字形图像，这不是最佳的（特别是当你遇到更长的字符串或整个页面时）。 
