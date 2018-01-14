@@ -1267,3 +1267,78 @@ FT_Done_Glyph( image );
 这份代码是FreeType 2示范程序ftstring.c的基础。它可以被简单地扩展，在第一部发完成高级文本布局或自动换行，而第二部分不需改变。 
 
 无论如何，要注意通常的实现会使用一个字形缓冲以减少内存消耗。据个例子，让我们假定我们的字符串是“FreeType”。我们将在我们的表中保存字母‘e’的三个相同的字形图像，这不是最佳的（特别是当你遇到更长的字符串或整个页面时）。 
+
+- # 6.以预设字体单位的格式访问度量，并且伸缩它们 
+
+可伸缩的字体格式通常会为字体face中的每一个字形保存一份矢量图像，该矢量图像称为轮廓。每一个轮廓都定义在一个抽象的网格中，该网格被称为 预设空间(design space)，其坐标以名义上(nominal)的字体单位(font unit)表示。当装载一个字形图像时，字体驱动器通常会依照FT_Size对象所指定的当前字符象素尺寸把轮廓伸缩到设备空间。字体驱动器也能修改伸缩 过的轮廓以大大地改善它在基于象素的表面(surface)中显示的效果。修改动作通常称为hinting或网格对齐。 
+
+这一章描述了如何把预设坐标伸缩到设备空间，以及如何读取字形轮廓和如何获取以预设字体单位格式表示的度量。这对许多事情来说都是重要的： 
+
+* 真正的所见即所得文字排版 
+
+* 为了字体转换或者分析的目的而访问字体内容 
+
+a.伸缩距离到设备空间 
+
+我们使用一个简单的伸缩变换把预设坐标伸缩到设备空间。变换系数借助字符象素尺寸来计算： 
+
+Device_x = design_x * x_scale 
+Device_y = design_y * y_scale 
+
+X_scale = pixel_size_x / EM_size 
+Y_scale = pixel_size_y / EM_size 
+
+这里，值EM_Size是因字体而异的，并且对应预设空间的一个抽象矩形（称为EM）的大小。字体设计者使用该矩形创建字形图像。EM_Size 以字体单元的形式表示。对于可伸缩字体格式，可以通过face->unix_per_EM直接访问。你应该使用FT_IS_SCALABLE宏检查 某个字体face是否包含可伸缩字形图像，当包含时该宏返回true。 
+
+当你调用函数FT_Set_Pixel_Sizes，你便指定了pixel_size_x和pixel_size_y的值。FreeType库将会立即使用该值计算x_scale和y_scale的值。 
+
+当你调用函数FT_Set_Char_Size，你便以物理点的形式指定了字符尺寸。FreeType库将会使用该值和设备的解析度来计算字符象素尺寸和相应的比例因子。 
+
+注意，在调用上面提及的两个函数后，你可以通过访问face->size->metrices结构的字段得到字符象素尺寸和比例因子的值。这些字段是： 
+
+X_ppem 
+这个字段代表了“每一个EM的x方向象素”，这是以整数象素表示EM矩形的水平尺寸，也是字符水平象素尺寸，即上面例子所称的pixel_size_x。 
+
+y_ppem 
+这个字段代表了“每一个EM的y方向象素”，这是以整数象素表示EM矩形的垂直尺寸，也是字符垂直象素尺寸，即上面例子所称的pixel_size_y。 
+
+X_scale 
+这是一个16.16固定浮点比例，用来把水平距离从预设空间直接伸缩到1/64设备象素。 
+
+y_scale 
+这是一个16.16固定浮点比例，用来把垂直距离从预设空间直接伸缩到1/64设备象素。 
+
+你可以借助FT_MulFix函数直接伸缩一个以26.6象素格式表示的距离，如下所示： 
+
+/* 把预设距离转换到1/64象素 */ 
+pixels_x=FT_MulFix(design_x,face->size->metrics.x_scale); 
+pixels_y=FT_MulFix(design_y,face->size->metrics.y_scale); 
+
+当然，你也可以使用双精度浮点数更精确地伸缩该值： 
+
+FT_Size_Metrics* metrics = &face->size->metrics; /* 捷径 */ 
+double pixels_x, pixels_y; 
+double em_size, x_scale, y_scale; 
+
+/* 计算浮点比例因子 */ 
+em_size = 1.0 * face->units_per_EM; 
+x_scale = metrics->x_ppem / em_size; 
+y_scale = metrics->y_ppem / em_size; 
+
+/* 把预设距离转换为浮点象素 */ 
+pixels_x = design_x * x_scale; 
+pixels_y = design_y * y_scale; 
+
+b.访问预设度量（字形的和全局的） 
+
+你可以以字体单位的格式访问字形度量，只要在调用FT_Load_Glyph或FT_Load_Char时简单地指定FT_LOAD_NO_SCALE位标志便可以了。度量返回在face->glyph_metrics，并且全部都以字体单位的格式表示。 
+
+你可以使用FT_KERNING_MODE_UNSCALED模式访问未伸缩的字距调整数据。 
+
+最后，FT_Face句柄的字段包含少数几个全局度量，我们已经在本部分的第三章叙述过了。 
+
+结论 
+
+这是FreeType 2教程第二部分的结尾。现在你可以访问字形度量，管理字形图像，以及更巧妙地渲染文字（字距调整，测量，变换和缓冲）。 
+
+现在你有了足够的知识能够以FreeType2为基础构建一个相当好的文字服务，而且要是你愿意，你可以在这里止步了。 
