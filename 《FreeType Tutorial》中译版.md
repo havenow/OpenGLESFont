@@ -358,9 +358,9 @@ FT_GlyphSlot slot = face->glyph; /* 一个小捷径 */
 int pen_x, pen_y, n; 
 
 
-... initialize library ... 
-... create face object ... 
-... set character size ... 
+... initialize library ..
+... create face object ..
+... set character size ..
 
 pen_x = 300; 
 pen_y = 200; 
